@@ -1,0 +1,26 @@
+{
+  "author": {
+    "name": "Hossein Amin"
+  },
+  "cordova": {
+    "id": "audscan-cordova-plugin",
+    "platforms": [
+      "ios"
+    ]
+  },
+  "dependencies": {},
+  "description": "NativeAccessApi plugin through Cordova",
+  "devDependencies": {
+  },
+  "directories": {},
+  "engines": {
+    "cordovaDependencies": {
+      "5.0.0": {
+        "cordova": ">100"
+      }
+    }
+  },
+  "license": "ISC",
+  "name": "audscan-cordova-plugin",
+  "version": "0.0.1"
+}
