@@ -38,12 +38,30 @@
 @implementation NativeAccessApi {
     NSMutableDictionary *_pointers;
     NSMutableArray *_finish_callbacks;
+    bool _isSoftKeyboardVisible;
 }
 
 - (void)pluginInitialize {
     [super pluginInitialize];
     _pointers = [[NSMutableDictionary alloc] init];
     _finish_callbacks = [[NSMutableArray alloc] init];
+    _isSoftKeyboardVisible = NO;
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
+}
+
+- (void)keyboardWillShow:(NSNotification *)notification
+{
+    @synchronized (self) {
+        _isSoftKeyboardVisible = YES;
+    }
+}
+
+- (void)keyboardWillHide:(NSNotification *)notification
+{
+    @synchronized (self) {
+        _isSoftKeyboardVisible = YES;
+    }
 }
 
 - (void)dispose {
@@ -85,6 +103,26 @@
 - (void)has_audio_device:(CDVInvokedUrlCommand*)command {
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:YES] callbackId:command.callbackId];
 }
+
+- (void)is_software_keyboard_visible:(CDVInvokedUrlCommand*)command {
+    bool value;
+    @synchronized (self) {
+        value = _isSoftKeyboardVisible;
+    }
+    [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:value] callbackId:command.callbackId];
+}
+
+- (void)get_voices:(CDVInvokedUrlCommand*)command {
+    NSMutableArray *voices = [NSMutableArray new];
+    for(AVSpeechSynthesisVoice *voice in [AVSpeechSynthesisVoice speechVoices]) {
+        [voices addObject:@{
+                            @"id": voice.identifier,
+                            @"label": voice.name
+                            }];
+    }
+    [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:voices] callbackId:command.callbackId];
+}
+
 - (void)init_synthesizer:(CDVInvokedUrlCommand*)command {
     AVSpeechSynthesizer *speechSynthesizer = [[AVSpeechSynthesizer alloc] init];
     speechSynthesizer.delegate = self;
@@ -95,7 +133,52 @@
 - (void)init_utterance:(CDVInvokedUrlCommand*)command {
     NSString *speech = [command.arguments objectAtIndex:0];
     AVSpeechUtterance *speechUtterance = [[AVSpeechUtterance alloc] initWithString:speech];
-    speechUtterance.rate = AVSpeechUtteranceDefaultSpeechRate;
+    
+    NSDictionary *options = command.arguments.count > 1 ?
+    [command.arguments objectAtIndex:1] : nil;
+    if([options isKindOfClass:[NSDictionary class]]) {
+        NSString *voiceId = [options objectForKey:@"voiceId"];
+        if([voiceId isKindOfClass:[NSString class]]) {
+            AVSpeechSynthesisVoice *voice = [AVSpeechSynthesisVoice voiceWithIdentifier:voiceId];
+            if(voice != nil) {
+                speechUtterance.voice = voice;
+            }
+        }
+        NSNumber *num;
+        
+        num = [options objectForKey:@"volume"];
+        if([num isKindOfClass:[NSNumber class]]) {
+            speechUtterance.volume = [num floatValue];
+        }
+        
+        num = [options objectForKey:@"pitch"];
+        if([num isKindOfClass:[NSNumber class]]) {
+            speechUtterance.pitchMultiplier = [num floatValue];
+        }
+        
+        NSString *rate = [options objectForKey:@"rate"];
+        num = [options objectForKey:@"rateMul"];
+        if([rate isKindOfClass:[NSString class]] ||
+           [num isKindOfClass:[NSNumber class]]) {
+            float rateVal = 1.0f;
+            if([rate isEqualToString:@"default"]) {
+                rateVal = AVSpeechUtteranceDefaultSpeechRate;
+            } else if([rate isEqualToString:@"min"]) {
+                rateVal = AVSpeechUtteranceMinimumSpeechRate;
+            } else if([rate isEqualToString:@"max"]) {
+                rateVal = AVSpeechUtteranceMaximumSpeechRate;
+            }
+            if([num isKindOfClass:[NSNumber class]])
+                rateVal *= [num floatValue];
+            speechUtterance.rate = rateVal;
+        }
+        
+        num = [options objectForKey:@"delay"];
+        if([num isKindOfClass:[NSNumber class]]) {
+            speechUtterance.preUtteranceDelay = (NSTimeInterval)[num longValue] / 1000.0;
+        }
+    }
+    
     NSString *key = [NativeAccessApi mkNewKeyForDict:_pointers];
     [_pointers setObject:speechUtterance forKey:key];
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:key] callbackId:command.callbackId];
@@ -170,3 +253,4 @@
 }
 
 @end
+
