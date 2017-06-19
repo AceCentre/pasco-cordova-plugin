@@ -85,7 +85,10 @@
 }
 
 - (id)pointerObjectForKey:(NSString*)key excepting:(Class)cls canBeNull:(Boolean)canBeNull error:(NSString**)error {
-    id ptr = [_pointers objectForKey:key];
+    id ptr;
+    @synchronized (self) {
+        ptr = [_pointers objectForKey:key];
+    }
     if(ptr == nil) {
         *error = [NSString stringWithFormat:@"Excepting object of type %@ is nil", NSStringFromClass(cls)];
         return nil;
@@ -124,71 +127,85 @@
 }
 
 - (void)init_synthesizer:(CDVInvokedUrlCommand*)command {
-    AVSpeechSynthesizer *speechSynthesizer = [[AVSpeechSynthesizer alloc] init];
-    speechSynthesizer.delegate = self;
-    NSString *key = [NativeAccessApi mkNewKeyForDict:_pointers];
-    [_pointers setObject:speechSynthesizer forKey:key];
-    [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:key] callbackId:command.callbackId];
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        AVSpeechSynthesizer *speechSynthesizer = [[AVSpeechSynthesizer alloc] init];
+        speechSynthesizer.delegate = self;
+        NSString *key;
+        @synchronized (self) {
+            key = [NativeAccessApi mkNewKeyForDict:_pointers];
+            [_pointers setObject:speechSynthesizer forKey:key];
+        }
+        [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:key] callbackId:command.callbackId];
+    });
 }
 - (void)init_utterance:(CDVInvokedUrlCommand*)command {
-    NSString *speech = [command.arguments objectAtIndex:0];
-    AVSpeechUtterance *speechUtterance = [[AVSpeechUtterance alloc] initWithString:speech];
-    
-    NSDictionary *options = command.arguments.count > 1 ?
-    [command.arguments objectAtIndex:1] : nil;
-    if([options isKindOfClass:[NSDictionary class]]) {
-        NSString *voiceId = [options objectForKey:@"voiceId"];
-        if([voiceId isKindOfClass:[NSString class]]) {
-            AVSpeechSynthesisVoice *voice = [AVSpeechSynthesisVoice voiceWithIdentifier:voiceId];
-            if(voice != nil) {
-                speechUtterance.voice = voice;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        NSString *speech = [command.arguments objectAtIndex:0];
+        AVSpeechUtterance *speechUtterance = [[AVSpeechUtterance alloc] initWithString:speech];
+        
+        NSDictionary *options = command.arguments.count > 1 ?
+        [command.arguments objectAtIndex:1] : nil;
+        if([options isKindOfClass:[NSDictionary class]]) {
+            NSString *voiceId = [options objectForKey:@"voiceId"];
+            if([voiceId isKindOfClass:[NSString class]]) {
+                AVSpeechSynthesisVoice *voice = [AVSpeechSynthesisVoice voiceWithIdentifier:voiceId];
+                if(voice != nil) {
+                    speechUtterance.voice = voice;
+                }
+            }
+            NSNumber *num;
+            
+            num = [options objectForKey:@"volume"];
+            if([num isKindOfClass:[NSNumber class]]) {
+                speechUtterance.volume = [num floatValue];
+            }
+            
+            num = [options objectForKey:@"pitch"];
+            if([num isKindOfClass:[NSNumber class]]) {
+                speechUtterance.pitchMultiplier = [num floatValue];
+            }
+            
+            NSString *rate = [options objectForKey:@"rate"];
+            num = [options objectForKey:@"rateMul"];
+            if([rate isKindOfClass:[NSString class]] ||
+               [num isKindOfClass:[NSNumber class]]) {
+                float rateVal = 1.0f;
+                if([rate isEqualToString:@"default"]) {
+                    rateVal = AVSpeechUtteranceDefaultSpeechRate;
+                } else if([rate isEqualToString:@"min"]) {
+                    rateVal = AVSpeechUtteranceMinimumSpeechRate;
+                } else if([rate isEqualToString:@"max"]) {
+                    rateVal = AVSpeechUtteranceMaximumSpeechRate;
+                }
+                if([num isKindOfClass:[NSNumber class]])
+                    rateVal *= [num floatValue];
+                speechUtterance.rate = rateVal;
+            }
+            
+            num = [options objectForKey:@"delay"];
+            if([num isKindOfClass:[NSNumber class]]) {
+                speechUtterance.preUtteranceDelay = (NSTimeInterval)[num longValue] / 1000.0;
             }
         }
-        NSNumber *num;
         
-        num = [options objectForKey:@"volume"];
-        if([num isKindOfClass:[NSNumber class]]) {
-            speechUtterance.volume = [num floatValue];
+        NSString *key;
+        @synchronized (self) {
+            key = [NativeAccessApi mkNewKeyForDict:_pointers];
+            [_pointers setObject:speechUtterance forKey:key];
         }
-        
-        num = [options objectForKey:@"pitch"];
-        if([num isKindOfClass:[NSNumber class]]) {
-            speechUtterance.pitchMultiplier = [num floatValue];
-        }
-        
-        NSString *rate = [options objectForKey:@"rate"];
-        num = [options objectForKey:@"rateMul"];
-        if([rate isKindOfClass:[NSString class]] ||
-           [num isKindOfClass:[NSNumber class]]) {
-            float rateVal = 1.0f;
-            if([rate isEqualToString:@"default"]) {
-                rateVal = AVSpeechUtteranceDefaultSpeechRate;
-            } else if([rate isEqualToString:@"min"]) {
-                rateVal = AVSpeechUtteranceMinimumSpeechRate;
-            } else if([rate isEqualToString:@"max"]) {
-                rateVal = AVSpeechUtteranceMaximumSpeechRate;
-            }
-            if([num isKindOfClass:[NSNumber class]])
-                rateVal *= [num floatValue];
-            speechUtterance.rate = rateVal;
-        }
-        
-        num = [options objectForKey:@"delay"];
-        if([num isKindOfClass:[NSNumber class]]) {
-            speechUtterance.preUtteranceDelay = (NSTimeInterval)[num longValue] / 1000.0;
-        }
-    }
-    
-    NSString *key = [NativeAccessApi mkNewKeyForDict:_pointers];
-    [_pointers setObject:speechUtterance forKey:key];
-    [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:key] callbackId:command.callbackId];
+        [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:key] callbackId:command.callbackId];
+    });
 }
 - (void)release_synthesizer:(CDVInvokedUrlCommand*)command {
-    [_pointers removeObjectForKey:[command.arguments objectAtIndex:0]];
+    @synchronized (self) {
+        [_pointers removeObjectForKey:[command.arguments objectAtIndex:0]];
+    }
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
 }
 - (void)release_utterance:(CDVInvokedUrlCommand*)command {
-    [_pointers removeObjectForKey:[command.arguments objectAtIndex:0]];
+    @synchronized (self) {
+        [_pointers removeObjectForKey:[command.arguments objectAtIndex:0]];
+    }
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
 }
 - (void)speak_utterance:(CDVInvokedUrlCommand*)command {
@@ -253,4 +270,5 @@
 }
 
 @end
+
 
