@@ -52,15 +52,19 @@
 
 - (void)keyboardWillShow:(NSNotification *)notification
 {
+    NSDictionary* userInfo = [notification userInfo];
+    CGRect keyboardFrame = [[userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    CGRect keyboard = [self.viewController.view convertRect:keyboardFrame fromView:self.viewController.view.window];
+    CGFloat height = self.viewController.view.frame.size.height;
     @synchronized (self) {
-        _isSoftKeyboardVisible = YES;
+        _isSoftKeyboardVisible = (keyboard.origin.y + keyboard.size.height) <= height;
     }
 }
 
 - (void)keyboardWillHide:(NSNotification *)notification
 {
     @synchronized (self) {
-        _isSoftKeyboardVisible = YES;
+        _isSoftKeyboardVisible = NO;
     }
 }
 
