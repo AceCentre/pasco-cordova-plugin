@@ -104,6 +104,12 @@
     return ptr;
 }
 
+- (void)request_audio_record_permission:(CDVInvokedUrlCommand*)command {
+  [[AVAudioSession sharedInstance] requestRecordPermission:^(BOOL granted) {
+      [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:granted] callbackId:command.callbackId];
+    }];
+}
+
 - (void)has_synthesizer:(CDVInvokedUrlCommand*)command {
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:YES] callbackId:command.callbackId];
 }
