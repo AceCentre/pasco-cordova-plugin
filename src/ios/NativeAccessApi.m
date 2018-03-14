@@ -8,6 +8,7 @@
 
 #import "NativeAccessApi.h"
 #import <AVFoundation/AVFoundation.h>
+#import <objc/runtime.h>
 
 @interface NAAFinishCallbackData : NSObject
 
@@ -39,6 +40,10 @@
     NSMutableDictionary *_pointers;
     NSMutableArray *_finish_callbacks;
     bool _isSoftKeyboardVisible;
+    id _keyCommandBlock;
+    NSMutableDictionary *_KeyInputMap;
+    NSMutableDictionary *_KeyInputRevMap;
+    NSMutableArray *_keyCommands;
 }
 
 - (void)pluginInitialize {
@@ -48,6 +53,87 @@
     _isSoftKeyboardVisible = NO;
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
+    [self keyboardInitialize];
+    _KeyInputMap = [@{
+                      @"UP": UIKeyInputUpArrow,
+                      @"RIGHT": UIKeyInputRightArrow,
+                      @"DOWN": UIKeyInputDownArrow,
+                      @"LEFT": UIKeyInputLeftArrow,
+                      @"RETURN": @"\r",
+                      @"SPACE": @" "
+                      } mutableCopy];
+    _KeyInputRevMap = [NSMutableDictionary new];
+    for(NSString *key in [_KeyInputMap allKeys]) {
+        [_KeyInputRevMap setObject:key forKey:[_KeyInputMap objectForKey:key]];
+    }
+}
+
+- (void)onReset {
+    [self keyboardReset];
+}
+
+BOOL mvc_canBecomeFirstResponder(id self, SEL __cmd) {
+    return YES;
+}
+
+void mvc_onKeyCommandDummy(id self, SEL __cmd, UIKeyCommand *keyCommand) {
+}
+
+- (void)keyboardInitialize {
+    // overwrite few viewcontroller's methods
+    //NSString *vc_cls_str = NSStringFromClass([self.viewController class]);
+    NativeAccessApi *_self = self;
+    Class vc_class = [self.viewController class];
+    BOOL result;
+    result = class_addMethod(vc_class, NSSelectorFromString(@"canBecomeFirstResponder"), (IMP)mvc_canBecomeFirstResponder, "B@:");
+    if(!result) {
+        NSLog(@"Could not bind canBecomeFirstResponder to MainViewController");
+    }
+    _keyCommandBlock = ^(id _mvc, UIKeyCommand *keyCommand) {
+        [_self onKeyCommand:keyCommand];
+    };
+    IMP keyCommandIMP = imp_implementationWithBlock(_keyCommandBlock);
+    result = class_addMethod(vc_class, NSSelectorFromString(@"_onKeyCommand:"), keyCommandIMP, "v@:@");
+    if(!result) {
+        NSLog(@"Could not bind didKeyCommand: to MainViewController");
+    }
+    [self keyboardReset];
+}
+
+- (void)keyboardDestroy {
+    BOOL result;
+    if(self.viewController != nil) {
+        [self keyboardReset];
+        Class vc_class = [self.viewController class];
+        result = class_addMethod(vc_class, NSSelectorFromString(@"_onKeyCommand:"), (IMP)mvc_onKeyCommandDummy, "v@:@");
+        if(!result) {
+            NSLog(@"Could not bind didKeyCommand: to MainViewController");
+        }
+    }
+}
+
+- (void)keyboardReset {
+    if(_keyCommands != nil) {
+        for(UIKeyCommand *cmd in _keyCommands) {
+            [self.viewController removeKeyCommand:cmd];
+        }
+    }
+    _keyCommands = [NSMutableArray new];
+}
+
+- (void)onKeyCommand:(UIKeyCommand*)keyCommand {
+    NSString *input = [_KeyInputRevMap objectForKey:keyCommand.input];
+    if(input == nil) {
+        input = keyCommand.input;
+    }
+    NSError *error = nil;
+    NSDictionary *detail = @{ @"input": input };
+    NSString *detailjson = [[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:detail options:0 error:&error] encoding:NSUTF8StringEncoding];
+    if(error != nil) {
+        NSLog(@"onKeyCommand error, Could not serialize detail, %@", [error localizedDescription]);
+    }
+    NSString *jsScript = [NSString stringWithFormat:@"document.dispatchEvent(new CustomEvent(\"x-keycommand\",{detail:%@}));", detailjson];
+    [self.webViewEngine evaluateJavaScript:jsScript completionHandler:nil];
 }
 
 - (void)keyboardWillShow:(NSNotification *)notification
@@ -72,6 +158,7 @@
     [super dispose];
     _pointers = nil;
     _finish_callbacks = nil;
+    [self keyboardDestroy];
 }
 
 + (NSString*)mkNewKeyForDict:(NSMutableDictionary*)dict {
@@ -102,6 +189,37 @@
         return nil;
     }
     return ptr;
+}
+
+- (void)add_key_command:(CDVInvokedUrlCommand*)command {
+    NSString *arg1 = [command.arguments objectAtIndex:0];
+    NSString *input = [_KeyInputMap objectForKey:arg1];
+    if(input == nil) {
+        input = arg1;
+    }
+    NSString *arg2 = nil;
+    if([command.arguments count] > 1)
+        arg2 = [command.arguments objectAtIndex:1];
+    if(arg2 == nil || ![arg2 isKindOfClass:[NSString class]])
+        arg2 = @"";
+    UIKeyCommand *keyCommand = [UIKeyCommand keyCommandWithInput:input modifierFlags:0 action:NSSelectorFromString(@"_onKeyCommand:") discoverabilityTitle:arg2];
+    [_keyCommands addObject:keyCommand];
+    [self.viewController addKeyCommand:keyCommand];
+    [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
+}
+
+- (void)remove_key_command:(CDVInvokedUrlCommand*)command {
+    NSString *arg1 = [command.arguments objectAtIndex:0];
+    NSString *input = [_KeyInputMap objectForKey:arg1];
+    if(input == nil) {
+        input = arg1;
+    }
+    for(UIKeyCommand *aKeyCommand in _keyCommands) {
+        if([aKeyCommand.input isEqualToString:input]) {
+            [self.viewController removeKeyCommand:aKeyCommand];
+        }
+    }
+    [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
 }
 
 - (void)request_audio_record_permission:(CDVInvokedUrlCommand*)command {
