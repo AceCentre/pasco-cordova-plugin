@@ -44,6 +44,7 @@
     NSMutableDictionary *_KeyInputMap;
     NSMutableDictionary *_KeyInputRevMap;
     NSMutableArray *_keyCommands;
+    BOOL _audioSwitchInitialized;
 }
 
 - (void)pluginInitialize {
@@ -51,6 +52,7 @@
     _pointers = [[NSMutableDictionary alloc] init];
     _finish_callbacks = [[NSMutableArray alloc] init];
     _isSoftKeyboardVisible = NO;
+    _audioSwitchInitialized = NO;
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
     [self keyboardInitialize];
