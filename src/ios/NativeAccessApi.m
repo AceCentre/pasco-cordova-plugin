@@ -397,6 +397,49 @@ void mvc_onKeyCommandDummy(id self, SEL __cmd, UIKeyCommand *keyCommand) {
     [self applyFinishFor:synthesizer utterance:utterance];
 }
 
+
+- (void)override_output_audio_to_speaker:(CDVInvokedUrlCommand*)command {
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    NSError *error = nil;
+    if(!_audioSwitchInitialized) {
+        // set category to accept properties assigned below
+        [session setCategory:AVAudioSessionCategoryPlayAndRecord mode:AVAudioSessionModeSpokenAudio
+                    options:0
+                    error:&error];
+        if(error != nil) {
+            NSLog(@"override_output_audio_to_speaker s01, %@", error);
+            return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"init failure!"] callbackId:command.callbackId];
+        }
+        // set active
+        [session setActive:YES error:&error];
+        if(error != nil) {
+            NSLog(@"override_output_audio_to_speaker s02, %@", error);
+            return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"init failure!"] callbackId:command.callbackId];
+        }
+        _audioSwitchInitialized = YES;
+    }
+    NSNumber *val = [command.arguments objectAtIndex:0];
+    if(![val isKindOfClass:[NSNumber class]]) {
+        return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Invalid argument!"] callbackId:command.callbackId];
+    }
+    if([val boolValue]) {
+        [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker
+                                   error:&error];
+        if(error != nil) {
+            NSLog(@"override_output_audio_to_speaker s03, %@", error);
+            return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"failure!"] callbackId:command.callbackId];
+        }
+    } else {
+        [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone
+                                   error:&error];
+        if(error != nil) {
+            NSLog(@"override_output_audio_to_speaker s03, %@", error);
+            return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"failure!"] callbackId:command.callbackId];
+        }
+    }
+    [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
+}
+
 @end
 
 
