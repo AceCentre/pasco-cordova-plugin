@@ -3,7 +3,7 @@
     "name": "Hossein Amin"
   },
   "cordova": {
-    "id": "audscan-cordova-plugin",
+    "id": "pasco-cordova-plugin",
     "platforms": [
       "ios"
     ]
@@ -21,6 +21,6 @@
     }
   },
   "license": "ISC",
-  "name": "audscan-cordova-plugin",
-  "version": "0.0.3"
+  "name": "pasco-cordova-plugin",
+  "version": "0.0.7"
 }
