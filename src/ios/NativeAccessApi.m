@@ -9,6 +9,7 @@
 #import "NativeAccessApi.h"
 #import <AVFoundation/AVFoundation.h>
 #import <objc/runtime.h>
+#import <MediaPlayer/MediaPlayer.h>
 
 @interface NAAFinishCallbackData : NSObject
 
@@ -51,6 +52,13 @@
     _pointers = [[NSMutableDictionary alloc] init];
     _finish_callbacks = [[NSMutableArray alloc] init];
     _isSoftKeyboardVisible = NO;
+    NSError* error = nil;
+    if (![[AVAudioSession sharedInstance] setActive:YES error:&error]) {
+        NSLog(@"Unable to activate session: %@", [error localizedFailureReason]);
+    }
+    if (![[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:&error]) {
+        NSLog(@"AVAudioSession, Unable to setCategory to playback: %@", [error localizedFailureReason]);
+    }
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
     [self keyboardInitialize];
@@ -248,30 +256,81 @@ void mvc_onKeyCommandDummy(id self, SEL __cmd, UIKeyCommand *keyCommand) {
     for(AVSpeechSynthesisVoice *voice in [AVSpeechSynthesisVoice speechVoices]) {
         [voices addObject:@{
                             @"id": voice.identifier,
-                            @"label": voice.name
+                            @"label": voice.name,
+                            @"locale": voice.language
                             }];
     }
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:voices] callbackId:command.callbackId];
 }
 
-- (void)override_output_to_speaker:(CDVInvokedUrlCommand*)command {
+static UIButton *find_uibutton_in_view (UIView *view) {
+    if ([view isKindOfClass:[UIButton class]]) {
+        return (UIButton*)view;
+    }
+    if (view.subviews != nil) {
+        for (UIView *aview in view.subviews) {
+            id v = find_uibutton_in_view(aview);
+            if (v != nil)
+                return v;
+        }
+    }
+    return nil;
+}
+
+- (void)ios_open_manage_output_audio_view:(CDVInvokedUrlCommand*)command {
+    MPVolumeView *volumeView = [[MPVolumeView alloc] init];
+    [self.viewController.view addSubview:volumeView];
+    volumeView.showsVolumeSlider = NO;
+    volumeView.showsRouteButton = YES;
+    UIButton *button = find_uibutton_in_view(volumeView);
+    if (button != nil) {
+        [button sendActionsForControlEvents: UIControlEventTouchUpInside];
+    }
+    [volumeView removeFromSuperview];
+    [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
+}
+
+- (void)override_output:(CDVInvokedUrlCommand*)command {
     NSError *error = nil;
-    NSNumber *override_to_speaker = [command.arguments objectAtIndex:0];
-    bool override_to_speaker_b = override_to_speaker != nil && [override_to_speaker boolValue];
-    [[AVAudioSession sharedInstance] setCategory:(override_to_speaker_b ? AVAudioSessionCategoryPlayAndRecord :
-                                                  AVAudioSessionCategoryPlayback) error:&error];
+    NSString *arg0 = [command.arguments objectAtIndex:0];
+    if (arg0 == nil || [arg0 isKindOfClass:[NSNull class]]) {
+        arg0 = @"";
+    } else if (![arg0 isKindOfClass:[NSString class]]) {
+        return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"arg0 is expected to be a string or null"] callbackId:command.callbackId];
+    }
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    bool override_to_speaker = NO;
+    AVAudioSessionCategory category = AVAudioSessionCategoryPlayAndRecord;
+    AVAudioSessionPortDescription *prefInput = nil;
+    if ([arg0 isEqualToString:@"headphone"]) {
+        for (AVAudioSessionPortDescription *desc in session.availableInputs) {
+            if ([[[desc portName] lowercaseString] containsString:@"head"]) {
+                prefInput = desc;
+                break;
+            }
+        }
+    } else if ([arg0 isEqualToString:@"builtinspeaker"]) {
+        override_to_speaker = YES;
+    } else { // default
+        category = AVAudioSessionCategoryPlayback;
+    }
+    [session setCategory:category error:&error];
     if(error != nil) {
-        NSLog(@"override_output_to_speaker failed, AVSession setCategory, %@", error);
+        NSLog(@"AVAudioSession setCategory failed, %@", error);
         return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"init failure!"] callbackId:command.callbackId];
     }
-    [[AVAudioSession sharedInstance] overrideOutputAudioPort:(override_to_speaker_b ? AVAudioSessionPortOverrideSpeaker : AVAudioSessionPortOverrideNone)
+    [session overrideOutputAudioPort:(override_to_speaker ? AVAudioSessionPortOverrideSpeaker : AVAudioSessionPortOverrideNone)
                                                        error:&error];
     if(error != nil) {
-        NSLog(@"override_output_to_speaker failed, AVSession overrideOutputAudioPort, %@", error);
-        [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"init failure!"] callbackId:command.callbackId];
-    } else {
-        [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
+        NSLog(@"AVAudioSession override_output_to_speaker failed, %@", error);
+        return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"init failure!"] callbackId:command.callbackId];
     }
+    [session setPreferredInput:prefInput error:&error];
+    if(error != nil) {
+        NSLog(@"AVAudioSession setPreferredInput failed, %@", error);
+        return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"init failure!"] callbackId:command.callbackId];
+    }
+    [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
 }
 
 - (void)init_synthesizer:(CDVInvokedUrlCommand*)command {
