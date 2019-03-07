@@ -290,7 +290,7 @@ static UIButton *find_uibutton_in_view (UIView *view) {
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
 }
 
-- (void)override_output:(CDVInvokedUrlCommand*)command {
+- (void)set_audio_behavior:(CDVInvokedUrlCommand*)command {
     NSError *error = nil;
     NSString *arg0 = [command.arguments objectAtIndex:0];
     if (arg0 == nil || [arg0 isKindOfClass:[NSNull class]]) {
@@ -311,7 +311,7 @@ static UIButton *find_uibutton_in_view (UIView *view) {
         }
     } else if ([arg0 isEqualToString:@"builtinspeaker"]) {
         override_to_speaker = YES;
-    } else { // default
+    } else if (![arg0 isEqualToString:@"playandrecord"]) { // default
         category = AVAudioSessionCategoryPlayback;
     }
     [session setCategory:category error:&error];
