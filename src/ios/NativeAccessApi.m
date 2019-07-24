@@ -211,6 +211,8 @@ void mvc_onKeyCommandDummy(id self, SEL __cmd, UIKeyCommand *keyCommand) {
     if(arg2 == nil || ![arg2 isKindOfClass:[NSString class]])
         arg2 = @"";
     UIKeyCommand *keyCommand = [UIKeyCommand keyCommandWithInput:input modifierFlags:0 action:NSSelectorFromString(@"_onKeyCommand:") discoverabilityTitle:arg2];
+    // prevent repeat of keypress when user holds the key (private api)
+    [keyCommand setValue:@(NO) forKey:@"_repeatable"];
     [_keyCommands addObject:keyCommand];
     [self.viewController addKeyCommand:keyCommand];
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
