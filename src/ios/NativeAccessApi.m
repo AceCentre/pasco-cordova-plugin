@@ -40,6 +40,7 @@
 @implementation NativeAccessApi {
     NSMutableDictionary *_pointers;
     NSMutableArray *_finish_callbacks;
+    NSMutableArray *_did_finish_callbacks;
     BOOL _isSoftKeyboardVisible;
     id _keyCommandBlock;
     NSMutableDictionary *_KeyInputMap;
@@ -51,6 +52,7 @@
     [super pluginInitialize];
     _pointers = [[NSMutableDictionary alloc] init];
     _finish_callbacks = [[NSMutableArray alloc] init];
+    _did_finish_callbacks = [[NSMutableArray alloc] init];
     _isSoftKeyboardVisible = NO;
     NSError* error = nil;
     if (![[AVAudioSession sharedInstance] setActive:YES error:&error]) {
@@ -166,6 +168,7 @@ void mvc_onKeyCommandDummy(id self, SEL __cmd, UIKeyCommand *keyCommand) {
     [super dispose];
     _pointers = nil;
     _finish_callbacks = nil;
+    _did_finish_callbacks = nil;
     [self keyboardDestroy];
 }
 
@@ -183,7 +186,7 @@ void mvc_onKeyCommandDummy(id self, SEL __cmd, UIKeyCommand *keyCommand) {
     return key;
 }
 
-- (id)pointerObjectForKey:(NSString*)key excepting:(Class)cls canBeNull:(Boolean)canBeNull error:(NSString**)error {
+- (id)pointerObjectForKey:(NSString*)key excepting:(Class)cls error:(NSString**)error {
     id ptr;
     @synchronized (self) {
         ptr = [_pointers objectForKey:key];
@@ -407,12 +410,54 @@ static UIButton *find_uibutton_in_view (UIView *view) {
 }
 - (void)release_synthesizer:(CDVInvokedUrlCommand*)command {
     @synchronized (self) {
+        NSString *synKey = [command.arguments objectAtIndex:0];
+        NSString *error = nil;
+        AVSpeechSynthesizer *speechSynthesizer = [self pointerObjectForKey:synKey excepting:[AVSpeechSynthesizer class] error:&error];
+        if(speechSynthesizer != nil) {
+            for(NSUInteger i = 0; i < [_finish_callbacks count]; ) {
+                NAAFinishCallbackData *data = [_finish_callbacks objectAtIndex:i];
+                if(data.synthesizer == speechSynthesizer) {
+                    [_finish_callbacks removeObjectAtIndex:i];
+                } else {
+                    i++;
+                }
+            }
+            for(NSUInteger i = 0; i < [_did_finish_callbacks count]; ) {
+                NAAFinishCallbackData *data = [_did_finish_callbacks objectAtIndex:i];
+                if(data.synthesizer == speechSynthesizer) {
+                    [_did_finish_callbacks removeObjectAtIndex:i];
+                } else {
+                    i++;
+                }
+            }
+        }
         [_pointers removeObjectForKey:[command.arguments objectAtIndex:0]];
     }
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
 }
 - (void)release_utterance:(CDVInvokedUrlCommand*)command {
     @synchronized (self) {
+        NSString *error = nil;
+        NSString *uttKey = [command.arguments objectAtIndex:0];
+        AVSpeechUtterance *speechUtterance = [self pointerObjectForKey:uttKey excepting:[AVSpeechUtterance class] error:&error];
+        if(speechUtterance != nil) {
+            for(NSUInteger i = 0; i < [_finish_callbacks count]; ) {
+                NAAFinishCallbackData *data = [_finish_callbacks objectAtIndex:i];
+                if(data.utterance == speechUtterance) {
+                    [_finish_callbacks removeObjectAtIndex:i];
+                } else {
+                    i++;
+                }
+            }
+            for(NSUInteger i = 0; i < [_did_finish_callbacks count]; ) {
+                NAAFinishCallbackData *data = [_did_finish_callbacks objectAtIndex:i];
+                if(data.utterance == speechUtterance) {
+                    [_did_finish_callbacks removeObjectAtIndex:i];
+                } else {
+                    i++;
+                }
+            }
+        }
         [_pointers removeObjectForKey:[command.arguments objectAtIndex:0]];
     }
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
@@ -423,8 +468,8 @@ static UIButton *find_uibutton_in_view (UIView *view) {
         NSString *uttKey = [command.arguments objectAtIndex:1];
         CDVPluginResult *result;
         NSString *error_msg = nil;
-        AVSpeechSynthesizer *speechSynthesizer = [self pointerObjectForKey:synKey excepting:[AVSpeechSynthesizer class] canBeNull:NO error:&error_msg];
-        AVSpeechUtterance *speechUtterance = [self pointerObjectForKey:uttKey excepting:[AVSpeechUtterance class] canBeNull:NO error:&error_msg];
+        AVSpeechSynthesizer *speechSynthesizer = [self pointerObjectForKey:synKey excepting:[AVSpeechSynthesizer class] error:&error_msg];
+        AVSpeechUtterance *speechUtterance = [self pointerObjectForKey:uttKey excepting:[AVSpeechUtterance class] error:&error_msg];
         if(speechSynthesizer == nil || speechUtterance == nil) {
             result = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:error_msg];
         } else {
@@ -438,7 +483,7 @@ static UIButton *find_uibutton_in_view (UIView *view) {
     NSString *synKey = [command.arguments objectAtIndex:0];
     CDVPluginResult *result;
     NSString *error = nil;
-    AVSpeechSynthesizer *speechSynthesizer = [self pointerObjectForKey:synKey excepting:[AVSpeechSynthesizer class] canBeNull:NO error:&error];
+    AVSpeechSynthesizer *speechSynthesizer = [self pointerObjectForKey:synKey excepting:[AVSpeechSynthesizer class] error:&error];
     if(speechSynthesizer == nil) {
         result = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:error];
     } else {
@@ -451,16 +496,28 @@ static UIButton *find_uibutton_in_view (UIView *view) {
     NSString *synKey = [command.arguments objectAtIndex:0];
     NSString *uttKey = [command.arguments objectAtIndex:1];
     NSString *error = nil;
-    AVSpeechSynthesizer *speechSynthesizer = [self pointerObjectForKey:synKey excepting:[AVSpeechSynthesizer class] canBeNull:NO error:&error];
-    AVSpeechUtterance *speechUtterance = [self pointerObjectForKey:uttKey excepting:[AVSpeechUtterance class] canBeNull:NO error:&error];
+    AVSpeechSynthesizer *speechSynthesizer = [self pointerObjectForKey:synKey excepting:[AVSpeechSynthesizer class] error:&error];
+    AVSpeechUtterance *speechUtterance = [self pointerObjectForKey:uttKey excepting:[AVSpeechUtterance class] error:&error];
     if(speechSynthesizer == nil || speechUtterance == nil) {
         [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:error] callbackId:command.callbackId];
     } else {
-        [_finish_callbacks addObject:[NAAFinishCallbackData dataWithSynthesizer:speechSynthesizer utterance:speechUtterance callbackId:command.callbackId]];
+        BOOL called = NO;
+        for(NSUInteger i = 0; i < [_did_finish_callbacks count]; ) {
+            NAAFinishCallbackData *data = [_did_finish_callbacks objectAtIndex:i];
+            if(data.synthesizer == speechSynthesizer && data.utterance == speechUtterance) {
+                [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
+                called = YES;
+                break;
+            }
+        }
+        if(!called) {
+            [_finish_callbacks addObject:[NAAFinishCallbackData dataWithSynthesizer:speechSynthesizer utterance:speechUtterance callbackId:command.callbackId]];
+        }
     }
 }
 
 - (void)applyFinishFor:(AVSpeechSynthesizer*)synthesizer utterance:(AVSpeechUtterance*)utterance {
+    [_did_finish_callbacks addObject:[NAAFinishCallbackData dataWithSynthesizer:synthesizer utterance:utterance callbackId:nil]];
     for (NSUInteger i = 0; i < [_finish_callbacks count]; ) {
         NAAFinishCallbackData *data = [_finish_callbacks objectAtIndex:i];
         if(data.synthesizer == synthesizer && data.utterance == utterance) {
@@ -480,5 +537,6 @@ static UIButton *find_uibutton_in_view (UIView *view) {
 }
 
 @end
+
 
 
