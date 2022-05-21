@@ -18,6 +18,5 @@
 - (void)release_utterance:(CDVInvokedUrlCommand*)command;
 - (void)speak_utterance:(CDVInvokedUrlCommand*)command;
 - (void)stop_speaking:(CDVInvokedUrlCommand*)command;
-- (void)speak_finish:(CDVInvokedUrlCommand*)command;
 
 @end
