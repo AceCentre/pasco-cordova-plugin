@@ -2,7 +2,7 @@
 //  NativeAccessApi.m
 //  AUDScan
 //
-//  Created by Hossein Amin on 5/22/17.
+//  Created by Hossein on 5/22/17.
 //
 //
 
@@ -28,13 +28,6 @@
     [super pluginInitialize];
     _pointers = [[NSMutableDictionary alloc] init];
     _isSoftKeyboardVisible = NO;
-    NSError* error = nil;
-    if (![[AVAudioSession sharedInstance] setActive:YES error:&error]) {
-        NSLog(@"Unable to activate session: %@", [error localizedFailureReason]);
-    }
-    if (![[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:&error]) {
-        NSLog(@"AVAudioSession, Unable to setCategory to playback: %@", [error localizedFailureReason]);
-    }
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
     [self keyboardInitialize];
@@ -225,6 +218,32 @@ void mvc_onKeyCommandDummy(id self, SEL __cmd, UIKeyCommand *keyCommand) {
         }
     }
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
+}
+
+- (void)activate_audio_session:(CDVInvokedUrlCommand*)command {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        NSError* error = nil;
+        if (![[AVAudioSession sharedInstance] setActive:YES error:&error]) {
+            NSLog(@"Unable to activate session: %@", [error localizedFailureReason]);
+            return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Failed to activate audio session!"] callbackId:command.callbackId];
+        }
+        if (![[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:&error]) {
+            NSLog(@"AVAudioSession, Unable to setCategory to playback: %@", [error localizedFailureReason]);
+            return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"audio sesion setCategory failed"] callbackId:command.callbackId];
+        }
+        [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:YES] callbackId:command.callbackId];
+    });
+}
+
+- (void)deactivate_audio_session:(CDVInvokedUrlCommand*)command {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        NSError* error = nil;
+        if (![[AVAudioSession sharedInstance] setActive:NO error:&error]) {
+            NSLog(@"Unable to activate session: %@", [error localizedFailureReason]);
+            return [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"activate audio session failed!"] callbackId:command.callbackId];
+        }
+        [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:YES] callbackId:command.callbackId];
+    });
 }
 
 - (void)request_audio_record_permission:(CDVInvokedUrlCommand*)command {
