@@ -188,14 +188,9 @@ void mvc_onKeyCommandDummy(id self, SEL __cmd, UIKeyCommand *keyCommand) {
     if(input == nil) {
         input = arg1;
     }
-    NSString *arg2 = nil;
-    if([command.arguments count] > 1)
-        arg2 = [command.arguments objectAtIndex:1];
-    if(arg2 == nil || ![arg2 isKindOfClass:[NSString class]])
-        arg2 = @"";
-    UIKeyCommand *keyCommand = [UIKeyCommand keyCommandWithInput:input modifierFlags:0 action:NSSelectorFromString(@"_onKeyCommand:") discoverabilityTitle:arg2];
-    NSDictionary *options = command.arguments.count > 2 ?
-      [command.arguments objectAtIndex:2] : [NSDictionary new];
+    UIKeyCommand *keyCommand = [UIKeyCommand keyCommandWithInput:input modifierFlags:0 action:NSSelectorFromString(@"_onKeyCommand:")];
+    NSDictionary *options = command.arguments.count > 1 ?
+      [command.arguments objectAtIndex:1] : [NSDictionary new];
     id repeatableOpt = [options objectForKey:@"repeatable"];
     if (repeatableOpt == nil || ![repeatableOpt boolValue]) {
       // prevent repeat of keypress when user holds the key (private api)
